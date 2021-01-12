@@ -18,5 +18,8 @@ export default {
         takePrioritization: false,
         carConsumption: 9,
         fuelCost: 1.8
+    },
+    routes: {
+        selectedRoute: ''
     }
 };

@@ -9,10 +9,13 @@ import InputBase from '@material-ui/core/InputBase';
 import Divider from '@material-ui/core/Divider';
 import IconButton from '@material-ui/core/IconButton';
 import Badge from '@material-ui/core/Badge';
-import LinearProgress from '@material-ui/core/LinearProgress';
 import MenuIcon from '@material-ui/icons/Menu';
-import SearchIcon from '@material-ui/icons/Search';
 import DirectionsIcon from '@material-ui/icons/Directions';
+import DeleteIcon from '@material-ui/icons/Delete';
+
+import DirectionsRendererC from './DirectionsRendererC';
+
+import searchServices from '../services/searchServices';
 
 const styles = {
     root: {
@@ -58,7 +61,8 @@ export class MapContainer extends Component {
                 lng: 0
             },
             mapIsLoaded: false,
-            searchText: ''
+            searchText: '',
+            directionsResponses: []
         };
 
         this.autocomplete = null;
@@ -72,24 +76,27 @@ export class MapContainer extends Component {
     }
 
     handleMapClick = event => {
-        this.setState({
-            ...this.state,
-            center: {
-                lat: this.state.map.center.lat(),
-                lng: this.state.map.center.lng()
-            }
-        }, () => {
-            this.props.dispatch({
-                type: 'ADD_POINT',
-                data: {
-                    position: {
-                        lat: event.latLng.lat(),
-                        lng: event.latLng.lng()
-                    },
-                    spendTime: 60
+        console.log('map click', event);
+        if (this.props.routes.selectedRoute === '') {
+            this.setState({
+                ...this.state,
+                center: {
+                    lat: this.state.map.center.lat(),
+                    lng: this.state.map.center.lng()
                 }
+            }, () => {
+                this.props.dispatch({
+                    type: 'ADD_POINT',
+                    data: {
+                        position: {
+                            lat: event.latLng.lat(),
+                            lng: event.latLng.lng()
+                        },
+                        spendTime: 60
+                    }
+                });
             });
-        });
+        }
     }
 
     handleLoadMap = map => {
@@ -119,7 +126,7 @@ export class MapContainer extends Component {
 
     handleClickSearchRoute = event => {
         if (this.props.points.length >= 3) {
-            console.log('search');
+            this.props.dispatch({ type: 'RESET_ROUTES' });
             let points = this.props.points;
             points.forEach(point => {
                 delete point['googleDetails'];
@@ -129,14 +136,47 @@ export class MapContainer extends Component {
                 settings: {...this.props.settings},
                 points: [...points]
             };
-            console.log(body);
-            console.log(JSON.stringify(body));
+            console.log('search', body);
+            this.props.enqueueSnackbar('Расчёт маршрута...', {
+                variant: 'info'
+            });
+            let nowDate = Date.now();
+            searchServices
+                    .getRoutes(body)
+                    .then(response => {
+                    	console.log('response => ', response);
+                    	if (response.success) {
+	                    	if (response.data.success) {
+								console.log('TIME => ', Date.now() - nowDate);
+		                        this.props.dispatch({
+		                            type: 'SET_ROUTES',
+		                            data: response.data
+		                        });
+	                    	} else {
+                    			this.props.enqueueSnackbar(response.data.message, {
+		                            variant: 'error'
+		                        });
+	                    	}
+                        } else {
+	                        this.props.enqueueSnackbar(response.message, {
+	                            variant: 'error'
+	                        });
+                        }                    	
+                    })
+                    .catch(error => {
+                        console.log('error => ', error);
+                        this.props.enqueueSnackbar(error.message, {
+                            variant: 'info'
+                        });
+                    });
         } else {
             this.props.enqueueSnackbar('Извините! Добавьте больше точек!', {
                 variant: 'info'
             });
         }
     }
+
+
 
     onLoadAutoCompolete = autocomplete => {
         this.autocomplete = autocomplete;
@@ -176,9 +216,13 @@ export class MapContainer extends Component {
         });
     };
 
+    handleClickDeleteRoutes = () => {
+        this.props.dispatch({ type: 'RESET_ROUTES' });
+    };
+
     render() {
         const { classes, points } = this.props;
-
+        
         return (
             <div className={classes.root}>
                 <LoadScript
@@ -211,12 +255,32 @@ export class MapContainer extends Component {
                             return (
                                 <div key={index} data-index={index}>
                                     <Marker
+                                        label={`${index + 1}`}
                                         position={marker.position}
                                         onClick={this.handleRemovePoint(marker.id)}
                                     />
                                 </div>
                             );
                         })}
+                        {this.props.routes.selectedRoute !== '' &&
+                            this.props.routes.routes[this.props.routes.selectedRoute].route.map((route, index) => {                               
+                                let originId = route[0];
+                                let destinationId = route[1];
+                                let originPoint = this.props.points.find(point => point.id === originId);
+                                let destinationPoint = this.props.points.find(point => point.id === destinationId);
+                                let directionsServiceOption = {
+                                    origin: originPoint.position,
+                                    destination: destinationPoint.position,
+                                    travelMode: originPoint.anotherPoints.find(point => point.id === destinationId).variant,
+                                };
+
+                                return <DirectionsRendererC 
+                                    key={index} 
+                                    index={index}
+                                    directionsServiceOption={directionsServiceOption}
+                                />;
+                            })          
+                        }                        
                         <Autocomplete
                             onLoad={this.onLoadAutoCompolete}
                             onPlaceChanged={this.onPlaceChanged}
@@ -232,7 +296,7 @@ export class MapContainer extends Component {
                                     </IconButton>
                                     <InputBase
                                         className={classes.searchControlPanelInput}
-                                        placeholder="Поиск месты"
+                                        placeholder="Поиск мест"
                                         inputProps={{ 'aria-label': 'search google maps' }}
                                         onChange={this.handleSearchTextChange}
                                     />
@@ -255,6 +319,16 @@ export class MapContainer extends Component {
                                             <DirectionsIcon />
                                         </Badge>
                                     </IconButton>
+                                    {this.props.routes.selectedRoute !== '' && 
+                                        <IconButton 
+                                            color="primary" 
+                                            className={classes.searchControlPanelIconButton} 
+                                            aria-label="delete"
+                                            onClick={this.handleClickDeleteRoutes}
+                                        >
+                                            <DeleteIcon />
+                                        </IconButton>
+                                    }
                                 </div>
                             </Paper>
                         </Autocomplete>
@@ -269,7 +343,8 @@ const mapStateToProps = state => {
     return {
         points: state.points,
         prioritization: state.prioritization,
-        settings: state.settings
+        settings: state.settings,
+        routes: state.routes
     }
 };
 

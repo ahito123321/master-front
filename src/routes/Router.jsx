@@ -10,9 +10,7 @@ export default function Router() {
         <BrowserRouter>
             <Switch>
                 <Route exact path="/" component={MapPage} />
-                <Route exact path="/map" component={MapPage} />
-
-                <Route path="*" component={() => <div>Not Found 404</div>} />
+                <Route path="*" component={() => <div>Not Found 404 <a href="/">home page</a></div>} />
             </Switch>
         </BrowserRouter>
     );

@@ -54,10 +54,6 @@ function SearchControlPanel(props) {
         isLoaded: false,
     });
 
-    React.useEffect(() => {
-        
-    });
-
     const handleMenuClick = event => {
         if (props.onMenuClick) {
             props.onMenuClick(event);
